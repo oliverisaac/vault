@@ -1648,6 +1648,9 @@ func (b *SystemBackend) mountPaths() []*framework.Path {
 					Type:        framework.TypeString,
 					Description: strings.TrimSpace(sysHelp["token_type"][0]),
 				},
+				"enable_identity_group_creation": {
+					Type: framework.TypeBool,
+				},
 			},
 
 			Callbacks: map[logical.Operation]framework.OperationFunc{

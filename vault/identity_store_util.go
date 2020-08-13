@@ -1087,6 +1087,7 @@ func (i *IdentityStore) sanitizeAndUpsertGroup(ctx context.Context, group *ident
 
 	// Entity metadata should always be map[string]string
 	err = validateMetadata(group.Metadata)
+
 	if err != nil {
 		return errwrap.Wrapf("invalid group metadata: {{err}}", err)
 	}
@@ -1886,8 +1887,31 @@ func (i *IdentityStore) MemDBGroupByAliasID(aliasID string, clone bool) (*identi
 	return i.MemDBGroupByAliasIDInTxn(txn, aliasID, clone)
 }
 
-func (i *IdentityStore) refreshExternalGroupMembershipsByEntityID(ctx context.Context, entityID string, groupAliases []*logical.Alias) ([]*logical.Alias, error) {
+func (i *IdentityStore) refreshExternalGroupMembershipsByEntityID(ctx context.Context, entityID string, groupAliases []*logical.Alias, createGroups bool) ([]*logical.Alias, error) {
 	defer metrics.MeasureSince([]string{"identity", "refresh_external_groups"}, time.Now())
+	if createGroups {
+		i.groupLock.Lock()
+		for _, groupAlias := range groupAliases {
+			group, err := i.MemDBGroupByAliasID(groupAlias.ID, false)
+			if err != nil {
+				i.groupLock.Unlock()
+				return nil, err
+			}
+			if group == nil {
+				group = &identity.Group{
+					Type:            groupTypeExternal,
+					Name:            groupAlias.MountAccessor + "-" + groupAlias.Name,
+					MemberEntityIDs: []string{entityID},
+				}
+			}
+			err = i.sanitizeAndUpsertGroup(ctx, group, nil, nil)
+			if err != nil {
+				i.groupLock.Unlock()
+				return nil, err
+			}
+		}
+		i.groupLock.Unlock()
+	}
 
 	if entityID == "" {
 		return nil, fmt.Errorf("empty entity ID")
